@@ -46,12 +46,17 @@ func main() {
 	lbounds := left.Bounds()
 	rbounds := right.Bounds()
 	cbounds := center.Bounds()
-	middle := 50
+
+	middle := 200
 	bounds := image.Rect(0, 0, lbounds.Dx() + rbounds.Dx() + middle, lbounds.Dy())
 	fmt.Printf("l: %s, r: %s, out: %s\n", lbounds, rbounds, bounds)
+
 	img := image.NewRGBA(bounds)
 	draw.Draw(img, lbounds, left, image.ZP, draw.Src)
-	draw.Draw(img, image.Rect(lbounds.Dx(), 0, lbounds.Dx() + middle, cbounds.Dy()), center, image.ZP, draw.Src)
+	for offset := 0; offset < middle; offset += cbounds.Dx() {
+		r := center.Bounds().Add(image.Pt(offset + lbounds.Dx(), 0))
+		draw.Draw(img, r, center, image.ZP, draw.Src)
+	}
 	draw.Draw(img, rbounds.Add(image.Pt(lbounds.Dx() + middle, 0)), right, image.ZP, draw.Src)
 	writeImage("output.png", img)
 }
