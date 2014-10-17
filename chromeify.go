@@ -1,16 +1,20 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"os"
 	"log"
+	"flag"
 	"image"
 	//"image/color"
 	"image/draw"
 	"image/png"
+	"net/http"
+	"html/template"
 )
 
 type Theme struct {
+	name string
 	topLeft image.Image
 	top image.Image
 	topRight image.Image
@@ -38,7 +42,7 @@ func defaultTheme() (theme Theme, err error) {
 	if err != nil {
 		return
 	}
-	return Theme{topLeft, top, topRight, border, border, border, border, border}, nil
+	return Theme{"default", topLeft, top, topRight, border, border, border, border, border}, nil
 }
 
 func (theme Theme) Decorate(in image.Image) image.Image {
@@ -114,18 +118,78 @@ func writeImage(filename string, img image.Image) error {
 	return png.Encode(f, img)
 }
 
-func main() {
+var indexTemplate = template.Must(template.ParseFiles("data/index.html"))
+
+func index(res http.ResponseWriter, req *http.Request) {
+	indexTemplate.Execute(res, "hello")
+}
+func decorate(res http.ResponseWriter, req *http.Request) {
+	maxMem := int64(1) << 23 // 8mb
+	err := req.ParseMultipartForm(maxMem)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	m := req.MultipartForm
+	images := m.File["image"]
+	if len(images) != 1 {
+		http.Error(res, "expected one image", http.StatusBadRequest)
+		return
+	}
 	theme, err := defaultTheme()
 	if err != nil {
-		log.Fatal(err)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	page, err := loadImage("data/sample_page.png")
+	f, err := images[0].Open()
 	if err != nil {
-		log.Fatal(err)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out := theme.Decorate(img)
+	res.Header().Set("Content-Type", "image/png")
+	err = png.Encode(res, out)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
 
-	img := theme.Decorate(page)
+func main() {
+	addr := flag.String("addr", ":8080", "http service address")
+	file := flag.String("file", "", "decorate specified file; writes to output.png")
+	flag.Parse()
 
-	writeImage("output.png", img)
+	if *file != "" {
+		fmt.Printf("decorating file: %s\n", *file)
+
+		theme, err := defaultTheme()
+		if err != nil {
+			log.Fatal(err)
+		}
+		page, err := loadImage(*file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		img := theme.Decorate(page)
+		err = writeImage("output.png", img)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		http.Handle("/", http.HandlerFunc(index))
+		http.Handle("/decorate", http.HandlerFunc(decorate))
+
+		fmt.Printf("listening on %s\n", *addr)
+		err := http.ListenAndServe(*addr, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
