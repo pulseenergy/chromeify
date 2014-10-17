@@ -3,6 +3,26 @@
 	<title>chromeify</title>
 </head>
 <body>
-<h1>{{.}}</h1>
+<form enctype="multipart/form-data" action="/decorate" method="post">
+	<ol>
+		<li>
+			<label for="image">Select an image to upload:</label>
+			<input id="image" name="image" type="file"/>
+		</li>
+		<li>
+			<label for="theme">Pick a theme:</label>
+			<select id="theme" name="theme">
+				<option value="default">Default</option>
+			</select>
+		</li>
+		<li>
+			<label for="done">Click this button:</label>
+			<input id="done" name="done" type="submit" value="Go"/>
+		</li>
+		<li>
+			<label>???</label>
+		</li>
+	</ol>
+</form>
 </body>
 </html>

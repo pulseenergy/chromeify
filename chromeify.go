@@ -123,6 +123,7 @@ var indexTemplate = template.Must(template.ParseFiles("data/index.html"))
 func index(res http.ResponseWriter, req *http.Request) {
 	indexTemplate.Execute(res, "hello")
 }
+
 func decorate(res http.ResponseWriter, req *http.Request) {
 	maxMem := int64(1) << 23 // 8mb
 	err := req.ParseMultipartForm(maxMem)
@@ -162,7 +163,7 @@ func decorate(res http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
-	addr := flag.String("addr", ":8080", "http service address")
+	addr := flag.String("addr", "", "http service address")
 	file := flag.String("file", "", "decorate specified file; writes to output.png")
 	flag.Parse()
 
@@ -186,7 +187,7 @@ func main() {
 		http.Handle("/", http.HandlerFunc(index))
 		http.Handle("/decorate", http.HandlerFunc(decorate))
 
-		fmt.Printf("listening on %s\n", *addr)
+		fmt.Printf("listening on: %s\n", *addr)
 		err := http.ListenAndServe(*addr, nil)
 		if err != nil {
 			log.Fatal(err)
