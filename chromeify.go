@@ -1,12 +1,13 @@
 package main
 
 import (
-	"fmt"
-	"image"
-	"image/draw"
-	"image/png"
+	//"fmt"
 	"os"
 	"log"
+	"image"
+	//"image/color"
+	"image/draw"
+	"image/png"
 )
 
 func loadImage(filename string) (image.Image, error) {
@@ -29,34 +30,83 @@ func writeImage(filename string, img image.Image) error {
 }
 
 func main() {
-	fmt.Printf("Hello, world.\n")
-	left, err := loadImage("data/top_left.png")
+	topLeft, err := loadImage("data/top_left.png")
 	if err != nil {
 		log.Fatal(err)
 	}
-	right, err := loadImage("data/top_right.png")
+	topRight, err := loadImage("data/top_right.png")
 	if err != nil {
 		log.Fatal(err)
 	}
-	center, err := loadImage("data/top_center.png")
+	top, err := loadImage("data/top_center.png")
 	if err != nil {
 		log.Fatal(err)
 	}
-	
-	lbounds := left.Bounds()
-	rbounds := right.Bounds()
-	cbounds := center.Bounds()
+	left, err := loadImage("data/1x1_border.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+	right := left
+	bottom := left
+	bottomLeft := left
+	bottomRight := left
 
-	middle := 200
-	bounds := image.Rect(0, 0, lbounds.Dx() + rbounds.Dx() + middle, lbounds.Dy())
-	fmt.Printf("l: %s, r: %s, out: %s\n", lbounds, rbounds, bounds)
-
-	img := image.NewRGBA(bounds)
-	draw.Draw(img, lbounds, left, image.ZP, draw.Src)
-	for offset := 0; offset < middle; offset += cbounds.Dx() {
-		r := center.Bounds().Add(image.Pt(offset + lbounds.Dx(), 0))
-		draw.Draw(img, r, center, image.ZP, draw.Src)
+	page, err := loadImage("data/sample_page.png")
+	if err != nil {
+		log.Fatal(err)
 	}
-	draw.Draw(img, rbounds.Add(image.Pt(lbounds.Dx() + middle, 0)), right, image.ZP, draw.Src)
+
+	outerWidth := left.Bounds().Dx() + page.Bounds().Dx() + right.Bounds().Dx()
+	outerHeight := top.Bounds().Dy() + page.Bounds().Dy() + bottom.Bounds().Dy()
+
+	img := image.NewRGBA(image.Rect(0, 0, outerWidth, outerHeight))
+
+	// pink fill shows any gaps
+//	pink := color.RGBA{255, 0, 255, 255}
+//	draw.Draw(img, img.Bounds(), &image.Uniform{pink}, image.ZP, draw.Src)
+
+	draw.Draw(img, page.Bounds().Add(image.Pt(left.Bounds().Dx(), top.Bounds().Dy())), page, image.ZP, draw.Src)
+
+	// top-left
+	offset := image.ZP
+	draw.Draw(img, topLeft.Bounds().Add(offset), topLeft, image.ZP, draw.Src)
+
+	// top
+	for offset := topLeft.Bounds().Dx(); offset < outerWidth - topRight.Bounds().Dx(); offset += top.Bounds().Dx() {
+		r := top.Bounds().Add(image.Pt(offset, 0))
+		draw.Draw(img, r, top, image.ZP, draw.Src)
+	}
+
+	// top-right
+	offset = image.Pt(outerWidth - topRight.Bounds().Dx(), 0)
+	draw.Draw(img, topRight.Bounds().Add(offset), topRight, image.ZP, draw.Src)
+
+	// left
+	for offset := topLeft.Bounds().Dy(); offset < outerHeight - bottomLeft.Bounds().Dy(); offset += left.Bounds().Dy() {
+		r := left.Bounds().Add(image.Pt(0, offset))
+		draw.Draw(img, r, left, image.ZP, draw.Src)
+	}
+
+	// right
+	for offset := topRight.Bounds().Dy(); offset < outerHeight - bottomRight.Bounds().Dy(); offset += right.Bounds().Dy() {
+		r := right.Bounds().Add(image.Pt(outerWidth - right.Bounds().Dx(), offset))
+		draw.Draw(img, r, right, image.ZP, draw.Src)
+	}
+
+	// bottom-left
+	offset = image.Pt(0, outerHeight - bottomLeft.Bounds().Dy())
+	draw.Draw(img, bottomLeft.Bounds().Add(offset), bottomLeft, image.ZP, draw.Src)
+
+	// bottom
+	for offset := bottomLeft.Bounds().Dx(); offset < outerWidth - bottomRight.Bounds().Dx(); offset += bottom.Bounds().Dx() {
+		r := bottom.Bounds().Add(image.Pt(offset, outerHeight - bottom.Bounds().Dy()))
+		draw.Draw(img, r, bottom, image.ZP, draw.Src)
+	}
+
+	// bottom-right
+	offset = image.Pt(outerWidth - bottomRight.Bounds().Dx(), outerHeight - bottomRight.Bounds().Dy())
+	draw.Draw(img, bottomRight.Bounds().Add(offset), topRight, image.ZP, draw.Src)
+
+
 	writeImage("output.png", img)
 }
