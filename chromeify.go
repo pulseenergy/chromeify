@@ -8,7 +8,6 @@ import (
 	"log"
 	"flag"
 	"image"
-	//"image/color"
 	"image/draw"
 	"image/png"
 	"net/http"
@@ -48,6 +47,10 @@ func defaultTheme() (theme Theme, err error) {
 	return Theme{"default", topLeft, top, topRight, border, border, border, border, border}, nil
 }
 
+func drawOffset(dst draw.Image, src image.Image, offset image.Point) {
+	draw.Draw(dst, src.Bounds().Add(offset), src, image.ZP, draw.Src)
+}
+
 func (theme Theme) Decorate(in image.Image) image.Image {
 	outerWidth := theme.left.Bounds().Dx() + in.Bounds().Dx() + theme.right.Bounds().Dx()
 	outerHeight := theme.top.Bounds().Dy() + in.Bounds().Dy() + theme.bottom.Bounds().Dy()
@@ -57,47 +60,42 @@ func (theme Theme) Decorate(in image.Image) image.Image {
 	// pink fill shows any gaps
 //	pink := color.RGBA{255, 0, 255, 255}
 //	draw.Draw(img, img.Bounds(), &image.Uniform{pink}, image.ZP, draw.Src)
-	draw.Draw(img, in.Bounds().Add(image.Pt(theme.left.Bounds().Dx(), theme.top.Bounds().Dy())), in, image.ZP, draw.Src)
+	drawOffset(img, in, image.Pt(theme.left.Bounds().Dx(), theme.top.Bounds().Dy()))
 
 	// top-left
-	offset := image.ZP
-	draw.Draw(img, theme.topLeft.Bounds().Add(offset), theme.topLeft, image.ZP, draw.Src)
+	drawOffset(img, theme.topLeft, image.ZP)
 
 	// top
-	for offset := theme.topLeft.Bounds().Dx(); offset < outerWidth - theme.topRight.Bounds().Dx(); offset += theme.top.Bounds().Dx() {
-		r := theme.top.Bounds().Add(image.Pt(offset, 0))
-		draw.Draw(img, r, theme.top, image.ZP, draw.Src)
+	for offset := image.Pt(theme.topLeft.Bounds().Dx(), 0); offset.X < outerWidth - theme.topRight.Bounds().Dx(); offset.X += theme.top.Bounds().Dx() {
+		drawOffset(img, theme.top, offset)
 	}
 
 	// top-right
-	offset = image.Pt(outerWidth - theme.topRight.Bounds().Dx(), 0)
-	draw.Draw(img, theme.topRight.Bounds().Add(offset), theme.topRight, image.ZP, draw.Src)
+	offset := image.Pt(outerWidth - theme.topRight.Bounds().Dx(), 0)
+	drawOffset(img, theme.topRight, offset)
 
 	// left
-	for offset := theme.topLeft.Bounds().Dy(); offset < outerHeight - theme.bottomLeft.Bounds().Dy(); offset += theme.left.Bounds().Dy() {
-		r := theme.left.Bounds().Add(image.Pt(0, offset))
-		draw.Draw(img, r, theme.left, image.ZP, draw.Src)
+	for offset := image.Pt(0, theme.topLeft.Bounds().Dy()); offset.Y < outerHeight - theme.bottomLeft.Bounds().Dy(); offset.Y += theme.left.Bounds().Dy() {
+		drawOffset(img, theme.left, offset)
 	}
 
 	// right
-	for offset := theme.topRight.Bounds().Dy(); offset < outerHeight - theme.bottomRight.Bounds().Dy(); offset += theme.right.Bounds().Dy() {
-		r := theme.right.Bounds().Add(image.Pt(outerWidth - theme.right.Bounds().Dx(), offset))
-		draw.Draw(img, r, theme.right, image.ZP, draw.Src)
+	for offset := image.Pt(outerWidth - theme.right.Bounds().Dx(), theme.topRight.Bounds().Dy()); offset.Y < outerHeight - theme.bottomRight.Bounds().Dy(); offset.Y += theme.right.Bounds().Dy() {
+		drawOffset(img, theme.right, offset)
 	}
 
 	// bottom-left
 	offset = image.Pt(0, outerHeight - theme.bottomLeft.Bounds().Dy())
-	draw.Draw(img, theme.bottomLeft.Bounds().Add(offset), theme.bottomLeft, image.ZP, draw.Src)
+	drawOffset(img, theme.bottomLeft, offset)
 
 	// bottom
-	for offset := theme.bottomLeft.Bounds().Dx(); offset < outerWidth - theme.bottomRight.Bounds().Dx(); offset += theme.bottom.Bounds().Dx() {
-		r := theme.bottom.Bounds().Add(image.Pt(offset, outerHeight - theme.bottom.Bounds().Dy()))
-		draw.Draw(img, r, theme.bottom, image.ZP, draw.Src)
+	for offset := image.Pt(theme.bottomLeft.Bounds().Dx(), outerHeight - theme.bottom.Bounds().Dy()); offset.X < outerWidth - theme.bottomRight.Bounds().Dx(); offset.X += theme.bottom.Bounds().Dx() {
+		drawOffset(img, theme.bottom, offset)
 	}
 
 	// bottom-right
 	offset = image.Pt(outerWidth - theme.bottomRight.Bounds().Dx(), outerHeight - theme.bottomRight.Bounds().Dy())
-	draw.Draw(img, theme.bottomRight.Bounds().Add(offset), theme.topRight, image.ZP, draw.Src)
+	drawOffset(img, theme.bottomRight, offset)
 
 	return img
 }
@@ -137,7 +135,7 @@ func decorate(res http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	maxMem := int64(1) << 23 // 8mb
+	maxMem := int64(1) << 22 // 4mb
 	err = req.ParseMultipartForm(maxMem)
 	if err != nil {
 		return
@@ -164,25 +162,12 @@ func decorate(res http.ResponseWriter, req *http.Request) {
 	}
 	out := theme.Decorate(img)
 	if len(m.Value["dropshadow"]) == 1 && m.Value["dropshadow"][0] == "true" {
-		var b bytes.Buffer
-		err = png.Encode(&b, out)
-		if err != nil {
-			return
-		}
-		im, err := magick.NewFromBlob(b.Bytes(), "png")
-		if err != nil {
-			return
-		}
-		err = im.Shadow("#000", 30, 5, 0, 0)
-		if err != nil {
-			return
-		}
-		out, err := im.ToBlob("png")
+		b, err := dropshadow(out)
 		if err != nil {
 			return
 		}
 		res.Header().Set("Content-Type", "image/png")
-		_, err = res.Write(out)
+		_, err = res.Write(b)
 		if err != nil {
 			return
 		}
@@ -193,6 +178,23 @@ func decorate(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
+}
+
+func dropshadow(img image.Image) ([]byte, error) {
+	var b bytes.Buffer
+	err := png.Encode(&b, img)
+	if err != nil {
+		return nil, err
+	}
+	im, err := magick.NewFromBlob(b.Bytes(), "png")
+	if err != nil {
+		return nil, err
+	}
+	err = im.Shadow("#000", 30, 5, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	return im.ToBlob("png")
 }
 
 func main() {
