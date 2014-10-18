@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"errors"
+	"bytes"
 	"log"
 	"flag"
 	"image"
@@ -11,6 +13,7 @@ import (
 	"image/png"
 	"net/http"
 	"html/template"
+	"github.com/quirkey/magick"
 )
 
 type Theme struct {
@@ -52,8 +55,8 @@ func (theme Theme) Decorate(in image.Image) image.Image {
 	img := image.NewRGBA(image.Rect(0, 0, outerWidth, outerHeight))
 
 	// pink fill shows any gaps
-	//	pink := color.RGBA{255, 0, 255, 255}
-	//	draw.Draw(img, img.Bounds(), &image.Uniform{pink}, image.ZP, draw.Src)
+//	pink := color.RGBA{255, 0, 255, 255}
+//	draw.Draw(img, img.Bounds(), &image.Uniform{pink}, image.ZP, draw.Src)
 	draw.Draw(img, in.Bounds().Add(image.Pt(theme.left.Bounds().Dx(), theme.top.Bounds().Dy())), in, image.ZP, draw.Src)
 
 	// top-left
@@ -125,40 +128,70 @@ func index(res http.ResponseWriter, req *http.Request) {
 }
 
 func decorate(res http.ResponseWriter, req *http.Request) {
+	var err error
+	status := http.StatusInternalServerError
+
+	defer func () {
+		if err != nil {
+			http.Error(res, err.Error(), status)
+		}
+	}()
+
 	maxMem := int64(1) << 23 // 8mb
-	err := req.ParseMultipartForm(maxMem)
+	err = req.ParseMultipartForm(maxMem)
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	m := req.MultipartForm
 	images := m.File["image"]
 	if len(images) != 1 {
-		http.Error(res, "expected one image", http.StatusBadRequest)
+		err = errors.New("expected one image");
+		status = http.StatusBadRequest
 		return
 	}
 	theme, err := defaultTheme()
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	f, err := images[0].Open()
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer f.Close()
 	img, _, err := image.Decode(f)
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	out := theme.Decorate(img)
-	res.Header().Set("Content-Type", "image/png")
-	err = png.Encode(res, out)
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-		return
+	if len(m.Value["dropshadow"]) == 1 && m.Value["dropshadow"][0] == "true" {
+		var b bytes.Buffer
+		err = png.Encode(&b, out)
+		if err != nil {
+			return
+		}
+		im, err := magick.NewFromBlob(b.Bytes(), "png")
+		if err != nil {
+			return
+		}
+		err = im.Shadow("#000", 30, 5, 0, 0)
+		if err != nil {
+			return
+		}
+		out, err := im.ToBlob("png")
+		if err != nil {
+			return
+		}
+		res.Header().Set("Content-Type", "image/png")
+		_, err = res.Write(out)
+		if err != nil {
+			return
+		}
+	} else {
+		res.Header().Set("Content-Type", "image/png")
+		err = png.Encode(res, out)
+		if err != nil {
+			return
+		}
 	}
 }
 
