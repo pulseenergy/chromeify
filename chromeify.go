@@ -1,18 +1,20 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"errors"
 	"bytes"
-	"log"
+	"errors"
 	"flag"
+	"fmt"
+	"github.com/quirkey/magick"
+	"html/template"
 	"image"
 	"image/draw"
+	_ "image/gif"
+	_ "image/jpeg"
 	"image/png"
+	"log"
 	"net/http"
-	"html/template"
-	"github.com/quirkey/magick"
+	"os"
 )
 
 type Theme struct {
