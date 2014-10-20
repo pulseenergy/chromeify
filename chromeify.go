@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 )
 
 type Theme struct {
@@ -200,18 +201,25 @@ func dropshadow(img image.Image) ([]byte, error) {
 }
 
 func main() {
-	addr := flag.String("addr", "", "http service address")
-	file := flag.String("file", "", "decorate specified file; writes to output.png")
+	var addr string
+	var file string
+
+	flag.StringVar(&addr, "addr", "", "http service address")
+	flag.StringVar(&file, "file", "", "decorate specified file; writes to output.png")
 	flag.Parse()
 
-	if *file != "" {
-		fmt.Printf("decorating file: %s\n", *file)
+	if file != "" {
+		if addr != "" {
+			log.Fatal("--addr and --file are mutually exclusive options")
+		}
+
+		fmt.Printf("decorating file: %s\n", file)
 
 		theme, err := defaultTheme()
 		if err != nil {
 			log.Fatal(err)
 		}
-		page, err := loadImage(*file)
+		page, err := loadImage(file)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -220,14 +228,20 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-	} else {
+	} else if addr != "" {
+		if match, _ := regexp.MatchString("^\\d+", addr); match {
+			addr = ":" + addr
+		}
+
 		http.Handle("/", http.HandlerFunc(index))
 		http.Handle("/decorate", http.HandlerFunc(decorate))
 
-		fmt.Printf("listening on: %s\n", *addr)
-		err := http.ListenAndServe(*addr, nil)
+		fmt.Printf("listening on: %s\n", addr)
+		err := http.ListenAndServe(addr, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
+	} else {
+		log.Fatal("one of --addr and --file is required")
 	}
 }
