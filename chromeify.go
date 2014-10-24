@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"path/filepath"
 )
 
 type Theme struct {
@@ -31,19 +32,19 @@ type Theme struct {
 }
 
 func defaultTheme() (theme Theme, err error) {
-	topLeft, err := loadImage("data/top_left.png")
+	topLeft, err := loadInternalImage("data/top_left.png")
 	if err != nil {
 		return
 	}
-	topRight, err := loadImage("data/top_right.png")
+	topRight, err := loadInternalImage("data/top_right.png")
 	if err != nil {
 		return
 	}
-	top, err := loadImage("data/top_center.png")
+	top, err := loadInternalImage("data/top_center.png")
 	if err != nil {
 		return
 	}
-	border, err := loadImage("data/1x1_border.png")
+	border, err := loadInternalImage("data/1x1_border.png")
 	if err != nil {
 		return
 	}
@@ -103,6 +104,15 @@ func (theme Theme) Decorate(in image.Image) image.Image {
 	return img
 }
 
+func loadInternalImage(filename string) (image.Image, error) {
+	b, err := Asset(filename)
+	if err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(b))
+	return img, err
+}
+
 func loadImage(filename string) (image.Image, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -122,7 +132,35 @@ func writeImage(filename string, img image.Image) error {
 	return png.Encode(f, img)
 }
 
-var indexTemplate = template.Must(template.ParseFiles("data/index.html"))
+// adapted from from template.ParseFiles
+func templateParseAssets(filenames ...string) (*template.Template, error) {
+	var t *template.Template
+	for _, filename := range filenames {
+		b, err := Asset(filename)
+		if err != nil {
+			return nil, err
+		}
+		s := string(b)
+		name := filepath.Base(filename)
+		if t == nil {
+			t = template.New(name)
+		}
+		var tmpl *template.Template
+		if name == t.Name() {
+			tmpl = t
+		} else {
+			tmpl = template.New(name)
+		}
+		_, err = tmpl.Parse(s)
+		if err != nil {
+			return nil, err
+		}
+		return tmpl, nil
+	}
+	return t, nil
+}
+
+var indexTemplate = template.Must(templateParseAssets("data/index.html"))
 
 func index(res http.ResponseWriter, req *http.Request) {
 	indexTemplate.Execute(res, "hello")

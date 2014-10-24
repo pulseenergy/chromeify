@@ -1,7 +1,13 @@
-GOFILES=$(wildcard *.go)
+GOFILES=$(wildcard *.go) bindata.go
 
 chromeify: $(GOFILES) .deps
 	go build -v ./...
+
+$(GOPATH)/bin/go-bindata:
+	go get -v github.com/jteeuwen/go-bindata/...
+
+bindata.go: $(GOPATH)/bin/go-bindata data/*
+	$(GOPATH)/bin/go-bindata data/
 
 .deps: $(GOFILES)
 	go get -d -v ./...
