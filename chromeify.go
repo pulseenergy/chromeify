@@ -12,10 +12,10 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"regexp"
 	"path/filepath"
 )
 
@@ -162,11 +162,11 @@ func templateParseAssets(filenames ...string) (*template.Template, error) {
 
 var indexTemplate = template.Must(templateParseAssets("data/index.html"))
 
-func index(res http.ResponseWriter, req *http.Request) {
+func indexHandler(res http.ResponseWriter, req *http.Request) {
 	indexTemplate.Execute(res, "hello")
 }
 
-func decorate(res http.ResponseWriter, req *http.Request) {
+func decorateHandler(res http.ResponseWriter, req *http.Request) {
 	var err error
 	status := http.StatusInternalServerError
 
@@ -203,7 +203,7 @@ func decorate(res http.ResponseWriter, req *http.Request) {
 	}
 	out := theme.Decorate(img)
 	if len(m.Value["dropshadow"]) == 1 && m.Value["dropshadow"][0] == "true" {
-		b, err := dropshadow(out)
+		b, err := applyDropshadow(out)
 		if err != nil {
 			return
 		}
@@ -221,7 +221,7 @@ func decorate(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func dropshadow(img image.Image) ([]byte, error) {
+func applyDropshadow(img image.Image) ([]byte, error) {
 	var b bytes.Buffer
 	err := png.Encode(&b, img)
 	if err != nil {
@@ -239,47 +239,72 @@ func dropshadow(img image.Image) ([]byte, error) {
 }
 
 func main() {
+	var dropshadow bool
+	decorateFlags := flag.NewFlagSet("decorate", flag.ExitOnError)
+	decorateFlags.BoolVar(&dropshadow, "dropshadow", false, "draw drop shadow")
+
 	var addr string
-	var file string
+	serveFlags := flag.NewFlagSet("serve", flag.ExitOnError)
+	serveFlags.StringVar(&addr, "addr", ":8080", "http service address")
 
-	flag.StringVar(&addr, "addr", "", "http service address")
-	flag.StringVar(&file, "file", "", "decorate specified file; writes to output.png")
-	flag.Parse()
-
-	if file != "" {
-		if addr != "" {
-			log.Fatal("--addr and --file are mutually exclusive options")
+	var command string
+	if (len(os.Args) > 1) {
+		command = os.Args[1]
+	}
+	switch (command) {
+	case "decorate":
+		decorateFlags.Parse(os.Args[2:])
+		if (decorateFlags.NArg() != 2) {
+			fmt.Fprintf(os.Stderr, "Usage: %s decorate <input> <output>\n", os.Args[0])
+			decorateFlags.PrintDefaults()
+			os.Exit(1)
 		}
-
-		fmt.Printf("decorating file: %s\n", file)
+		input := decorateFlags.Arg(0)
+		output := decorateFlags.Arg(1)
 
 		theme, err := defaultTheme()
 		if err != nil {
 			log.Fatal(err)
 		}
-		page, err := loadImage(file)
+		page, err := loadImage(input)
 		if err != nil {
 			log.Fatal(err)
 		}
 		img := theme.Decorate(page)
-		err = writeImage("output.png", img)
-		if err != nil {
-			log.Fatal(err)
+		if dropshadow {
+			b, err := applyDropshadow(img)
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = ioutil.WriteFile(output, b, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			err = writeImage(output, img)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-	} else if addr != "" {
-		if match, _ := regexp.MatchString("^\\d+", addr); match {
-			addr = ":" + addr
-		}
+	case "serve":
+		serveFlags.Parse(os.Args[2:])
 
-		http.Handle("/", http.HandlerFunc(index))
-		http.Handle("/decorate", http.HandlerFunc(decorate))
+		http.Handle("/", http.HandlerFunc(indexHandler))
+		http.Handle("/decorate", http.HandlerFunc(decorateHandler))
 
 		fmt.Printf("listening on: %s\n", addr)
 		err := http.ListenAndServe(addr, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
-	} else {
-		log.Fatal("one of --addr and --file is required")
+	default:
+		fmt.Fprintf(os.Stderr, "Unrecognized command %s\n", command)
+		fallthrough
+	case "", "-h", "--help", "help":
+		fmt.Fprintf(os.Stderr, "Usage: %s decorate <input> <output>\n", os.Args[0])
+		decorateFlags.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "Usage: %s serve\n", os.Args[0])
+		serveFlags.PrintDefaults()
+		os.Exit(1)
 	}
 }

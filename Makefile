@@ -16,7 +16,3 @@ bindata.go: $(GOPATH)/bin/go-bindata data/*
 .PHONY: test
 test: .deps
 	go test -v ./...
-
-.PHONY: serve
-serve: chromeify
-	./chromeify --addr :8080
